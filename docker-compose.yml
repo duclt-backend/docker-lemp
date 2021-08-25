@@ -1,0 +1,111 @@
+version: "3"
+
+services:
+# ====================== admin ======================
+    # php-fmp service
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+
+        container_name: app
+        restart: unless-stopped
+        tty: true
+        working_dir: /var/www/app
+
+        volumes:
+        - ./:/var/www/app
+        - ${PHP_INI_PATH-./php/local.ini}:/usr/local/etc/php/conf.d/local.ini
+
+        networks:
+        - app-network
+
+    # nginx service
+    app_server:
+        image: nginx:alpine
+        container_name: app_server
+        restart: unless-stopped
+        tty: true
+
+        ports:
+        - "${APP_MACHINE_UNSECURE_HOST_PORT}:80"
+        - "${APP_MACHINE_SECURE_HOST_PORT}:443"
+
+        volumes:
+        - ./:/var/www/app
+        - ${NGINX_PATH-./nginx/conf.d/}:/etc/nginx/conf.d/
+
+        networks:
+        - app-network
+
+    app_redis:
+        container_name: app_redis
+        image: redis:5.0.7
+        ports:
+            - "${APP_MACHINE_REDIS_PORT}:6379"
+
+        networks:
+            - app-network
+
+# ====================== database ======================
+    # mysql
+    app_database:
+        image: mysql:8.0.25
+        container_name: app_database
+        restart: unless-stopped
+        tty: true
+
+        ports:
+        - "${HOST_MACHINE_MYSQL_PORT}:3306"
+
+        environment:
+            MYSQL_DATABASE: ${DB_DATABASE}
+            # MYSQL_USER: ${DB_USERNAME}
+            # MYSQL_ROOT_USER: ${DB_USERNAME}
+            MYSQL_PASSWORD: ${DB_PASSWORD}
+            MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+            SERVICE_TAGS: dev
+            SERVICE_NAME: mysql
+
+        volumes:
+            - mysqldb:/var/lib/mysql
+            - ${MYSQL_PATH-./mysql/mysql.conf}:/etc/mysql/mysql.conf
+
+        networks:
+            - app-network
+
+    app_node:
+        container_name: app_node
+        image: node:14.16.1
+
+        networks:
+            - app-network
+
+    app_phpmyadmin:
+        image: phpmyadmin/phpmyadmin
+        container_name: app_phpmyadmin
+        depends_on:
+            - app
+            - app_database
+        environment:
+            PMA_HOST: app_database
+            PMA_PORT: 3306
+            # PMA_USER:  ${DB_USERNAME}
+            # PMA_PASSWORD: ${DB_PASSWORD}
+            MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+            MYSQL_USER: ${DB_USERNAME}
+            MYSQL_PASSWORD:  ${DB_PASSWORD}
+        ports:
+            - '${HOST_MACHINE_PHPMYADMIN_PORT}:80'
+        networks:
+            - app-network
+
+#Docer volumn
+volumes :
+    mysqldb:
+        driver: local
+
+#Docker Networks
+networks:
+    app-network:
+        driver: bridge
